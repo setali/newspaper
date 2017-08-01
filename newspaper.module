@@ -1,0 +1,242 @@
+<?php
+
+/**
+ * Implements hook_taxonomy_term_delete().
+ */
+function newspaper_taxonomy_term_delete($term) {
+
+    if ($term->getVocabularyId() == 'newspaper') {
+
+        foreach (newspaper_file_fields() as $field) {
+
+            if ($term->getFieldDefinition($field)) {
+                $file = $term->get($field)->getValue();
+                if (!empty($file)) {
+                    file_delete($file[0]['target_id']);
+                }
+            }
+
+        }
+    }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function newspaper_cron() {
+    crawl_newspaper('http://www.jaaar.com/frontpage#!/table/all');
+    drupal_set_message(t('Newspapers updated.'));
+}
+
+function crawl_newspaper($url) {
+    $today = \Drupal::service('persian_date.get_jalali')->getJalali('Y-n-j');
+    $dom = new \DOMDocument();
+    @$dom->loadHTMLFile($url);
+
+    $anchors = $dom->getElementsByTagName('p');
+
+    foreach ($anchors as $p) {
+
+        $img = $p->getElementsByTagName('img');
+        if ($img->length) {
+
+            $src = $img[0]->getAttribute('data-src');
+            $src = str_replace('_thumb', '', $src);
+
+            $news = array(
+                'id'    => $p->getAttribute('id'),
+                'sid'   => $p->getAttribute('data-sid'),
+                'nid'   => $p->getAttribute('data-nid'),
+                'title' => $img[0]->getAttribute('title'),
+                'src'   => $src,
+            );
+
+            $date = get_date_from_src($src);
+
+            if ($date != $today) {
+                continue;
+            }
+
+            $check = check_newspaper_exist($news['id']);
+
+            if (!$check) {
+                create_newspaper($news, $today);
+            }
+            else {
+                $news['tid'] = $check;
+                update_newspaper($news, $today);
+            }
+
+        }
+
+    }
+
+    return TRUE;
+}
+
+function check_newspaper_exist($news_id) {
+
+    $query = \Drupal::entityQuery('taxonomy_term')->condition('field_newspaper_id', $news_id);
+
+    $tids = $query->execute();
+
+    if (!empty($tids)) {
+        return key($tids);
+    }
+
+    return FALSE;
+}
+
+function get_newspaper_directory() {
+    $path = 'public://newspaper/';
+    file_prepare_directory($path, FILE_CREATE_DIRECTORY);
+
+    return $path;
+}
+
+function create_newspaper($news, $today) {
+
+    $data = file_get_contents('http://www.jaaar.com' . $news['src']);
+
+    $file = file_save_data($data, get_newspaper_directory() . $news['id'] . '.jpg', FILE_EXISTS_REPLACE);
+    $term = \Drupal\taxonomy\Entity\Term::create(array(
+        'name'                  => $news['title'],
+        'vid'                   => 'newspaper',
+        'field_newspaper_id'    => [$news['id']],
+        'field_newspaper_nid'   => [$news['nid']],
+        'field_newspaper_sid'   => [$news['sid']],
+        'field_newspaper_src'   => [$news['src']],
+        'field_newspaper_date'  => [$today],
+        'field_show_in_tv'      => [true],
+        'field_newspaper_image' => [
+            'target_id' => $file->id(),
+            'alt'       => $news['id'],
+            'title'     => $news['title'],
+        ],
+    ));
+    $term->save();
+
+    return $term->id();
+}
+
+function update_newspaper($news, $today) {
+    $term = \Drupal\taxonomy\Entity\Term::load($news['tid']);
+
+    $date = $term->get('field_newspaper_date')->getValue();
+
+    if (!empty($date) && $date[0]['value'] == $today)
+        return FALSE;
+
+    $data = file_get_contents('http://www.jaaar.com' . $news['src']);
+    $path = get_newspaper_directory() . $news['id'] . '.jpg';
+    $file = file_save_data($data, $path, FILE_EXISTS_REPLACE);
+
+    $term->field_newspaper_image->setValue([
+        'target_id' => $file->id(),
+        'alt'       => $news['id'],
+        'title'     => $news['title'],
+    ]);
+
+    $term->field_newspaper_date->setValue([$today]);
+
+    $term->save();
+    image_path_flush($path);
+
+    return $term;
+}
+
+function get_date_from_src($src) {
+    $array = explode('/', $src);
+    $index = array_search('pishkhan', $array);
+    $year = $array[++$index];
+    $month = $array[++$index];
+    $day = $array[++$index];
+
+    return $year . '-' . $month . '-' . $day;
+}
+
+/**
+ * Delete term of newspaper vocabulary.
+ */
+function delete_newspaper_terms($vocab_name) {
+    $tree = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->loadTree($vocab_name, $parent = 0, $max_depth = NULL, $load_entities = FALSE);
+
+    foreach ($tree as $term) {
+        $term = \Drupal\taxonomy\Entity\Term::load($term->tid);
+        $term->delete();
+    }
+
+    return true;
+}
+
+/**
+ * fields of newspaper vocabulary.
+ */
+function newspaper_fields() {
+    return array(
+        'field_newspaper_id'    => array(
+            'type'    => 'string',
+            'label'   => 'Newspaper id',
+            'form'    => 'string_textfield',
+            'display' => 'string',
+        ),
+        'field_newspaper_nid'   => array(
+            'type'    => 'integer',
+            'label'   => 'Newspaper nid',
+            'form'    => 'number',
+            'display' => 'number_unformatted',
+        ),
+        'field_newspaper_sid'   => array(
+            'type'    => 'integer',
+            'label'   => 'Newspaper sid',
+            'form'    => 'number',
+            'display' => 'number_unformatted',
+        ),
+        'field_newspaper_src'   => array(
+            'type'    => 'string',
+            'label'   => 'Newspaper src',
+            'form'    => 'string_textfield',
+            'display' => 'string',
+        ),
+        'field_newspaper_date'  => array(
+            'type'    => 'string',
+            'label'   => 'Newspaper date',
+            'form'    => 'string_textfield',
+            'display' => 'string',
+        ),
+        'field_newspaper_image' => array(
+            'type'    => 'image',
+            'label'   => 'Newspaper image',
+            'form'    => 'image_image',
+            'display' => 'image',
+        ),
+        'field_show_in_tv'      => array(
+            'type'    => 'boolean',
+            'label'   => 'Show in tv?',
+            'form'    => 'boolean_checkbox',
+            'display' => 'boolean',
+        ),
+        'field_show_in_satrab'  => array(
+            'type'    => 'boolean',
+            'label'   => 'show in satrab?',
+            'form'    => 'boolean_checkbox',
+            'display' => 'boolean',
+        ),
+    );
+}
+
+/**
+ * fields of newspaper vocabulary that type it is file or image.
+ */
+function newspaper_file_fields() {
+    $fields = newspaper_fields();
+
+    $result = [];
+    foreach ($fields as $key => $field) {
+        if ($field['type'] == 'file' || $field['type'] == 'image') {
+            $result[] = $key;
+        }
+    }
+
+    return $result;
+}

@@ -1,0 +1,7 @@
+newspaper_list:
+  path: 'api/newspapers/{system}'
+  defaults:
+    _controller: '\Drupal\newspaper\Controller\NewspaperController::index'
+    system: 'tv'
+  requirements:
+    _permission: 'access content'

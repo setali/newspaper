@@ -1,0 +1,8 @@
+name: Newspaper
+description: Provide newspaper crowler
+type: module
+core: '8.x'
+version: '8.0'
+
+dependencies:
+  - persian_date:persian_date

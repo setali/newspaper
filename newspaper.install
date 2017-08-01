@@ -1,0 +1,67 @@
+<?php
+
+
+/**
+ * Implements hook_install().
+ */
+function newspaper_install() {
+    $vid = "newspaper";
+    $name = "Newspaper";
+    $entity_type = "taxonomy_term";
+    $vocabulary = \Drupal\taxonomy\Entity\Vocabulary::create(array(
+        'vid'          => $vid,
+        'machine_name' => $vid,
+        'name'         => $name,
+        'description'  => 'List of newspaper that crawl from Jaar. ',
+    ));
+
+    $vocabulary->save();
+
+    foreach (newspaper_fields() as $key => $item) {
+
+        $storage = [
+            'field_name'  => $key,
+            'entity_type' => $entity_type,
+            'type'        => $item['type'],
+            'cardinality' => 1,
+        ];
+        \Drupal\field\Entity\FieldStorageConfig::create($storage)->save();
+
+        $config = [
+            'field_name'  => $key,
+            'entity_type' => $entity_type,
+            'bundle'      => $vid,
+            'label'       => t($item['label']),
+            'required'    => $item['required'],
+        ];
+
+        if ($item['settings'])
+            $config['settings'] = $item['settings'];
+        \Drupal\field\Entity\FieldConfig::create($config)->save();
+
+        if (isset($item['form'])) {
+            entity_get_form_display($entity_type, $vid, 'default')->setComponent($key, ['type' => $item['form']])->save();
+        }
+
+        if (isset($item['display'])) {
+            entity_get_display($entity_type, $vid, 'default')->setComponent($key, ['type' => $item['display']])->save();
+        }
+    }
+
+    entity_get_form_display($entity_type, $vid, 'default')->removeComponent('description')->save();
+    entity_get_form_display($entity_type, $vid, 'default')->removeComponent('path')->save();
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function newspaper_uninstall() {
+    $vocab_name = 'newspaper';
+    delete_newspaper_terms($vocab_name);
+    $vocabulary = \Drupal\taxonomy\Entity\Vocabulary::load($vocab_name);
+    if ($vocabulary) {
+        $vocabulary->delete();
+    }
+
+    drupal_rmdir(get_newspaper_directory());
+}
