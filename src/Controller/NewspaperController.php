@@ -24,7 +24,6 @@ class NewspaperController {
         foreach ($terms as $term) {
 
             $path = $term->field_newspaper_image->entity->uri->value;
-            image_path_flush($path);
             $url = \Drupal\image\Entity\ImageStyle::load('large')->buildUrl($path);
 
             $result[] = array(
