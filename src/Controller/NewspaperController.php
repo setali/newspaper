@@ -24,12 +24,11 @@ class NewspaperController {
         foreach ($terms as $term) {
 
             $path = $term->field_newspaper_image->entity->uri->value;
-//            $url = \Drupal\image\Entity\ImageStyle::load('large')->buildUrl($path);
             $url = file_create_url($path);
 
             $result[] = array(
                 'name'  => $term->getName(),
-                'image' => $url,
+                'image' => $url.'?'.rand(1, 100),
             );
 
         }
